@@ -1,21 +1,27 @@
 var KeyInput = function(config) {
 	this.target = (typeof config == "array" && config.target !== undefined ? config.target : document);
 	
-	//const MIN_POLL_ID = 0;
-	//const MAX_POLL_ID = 1000000000;
+	/*
+	const MAX_POLL_ID = 1000000000;
+	
+	this.pollID = 0;
+	this.keystatesPress = new Array(256);
+	this.keystatesRelease = new Array(256);
+	*/
 	
 	this.keystates = new Array(256);
-	//this.pollID = MIN_POLL_ID;
 	
 	var self = this;
 	
 	// public methods
 	this.isKeyDown = function(key) {
-		//return this.keystates[key] >= (this.pollID - 1);
+		//return this.keystatesPress[key] >= (this.pollID - 1);
+		//return this.keystatesPress[key] > this.keystatesRelease[key];
 		return this.keystates[key];
 	};
 	this.isKeyUp = function(key) {
-		//return this.keystates[key] == 0;
+		//return this.keystatesRelease[key] >= (this.pollID - 1);
+		//return !this.isKeyDown(key);
 		return !this.keystates[key];
 	};
 	this.poll = function() {
@@ -24,12 +30,14 @@ var KeyInput = function(config) {
 		this.pollID++;
 		
 		// manually reset array when poll id overflows
-		if(this.pollID == MAX_POLL_ID) {
-			for(var i = 0; i < this.keystates.length; i++) {
-				this.keystates[i] -= MAX_POLL_ID;
+		if(this.pollID >= MAX_POLL_ID) {
+			this.pollID = 0;
+			for(var i = 0; i < this.keystatesPress.length; i++) {
+				this.keystatesPress[i] -= MAX_POLL_ID;
 			}
-			
-			this.pollID = MIN_POLL_ID;
+			for(var i = 0; i < this.keystatesRelease.length; i++) {
+				this.keystatesRelease[i] -= MAX_POLL_ID;
+			}
 		}
 		*/
 	};
@@ -50,10 +58,8 @@ var KeyInput = function(config) {
 		if(e.repeat == true) return;
 		
 		// set
-		//self.keystates[key] = self.pollID;
-		if(self.keystates[key] != true) {
-			self.keystates[key] = true;
-		}
+		//self.keystatesPress[key] = self.pollID;
+		self.keystates[key] = true;
 	}, true);
 	
 	// on keyup
@@ -63,20 +69,26 @@ var KeyInput = function(config) {
 		e.preventDefault();
 		
 		// set
-		//self.keystates[key] = 0;
-		if(self.keystates[key] != false) {
-			self.keystates[key] = false;
-		}
+		//self.keystatesRelease[key] = self.pollID;
+		self.keystates[key] = false;
 	}, true);
 	
 	// on blur
 	window.onblur = function(e) {
-		// DEBUG:
-		console.log("blured");
+		// release all keys on blur
+		for(var i = 0; i < self.keystates.length; i++) {
+			self.keystates[i] = false;
+		}
+		
+		//if(self.releaseKeysOnBlur) {
+		//self.pollID++;
+		//}
 	};
 	
-	// request focus
-	//this.target.focus();
+	// try request focus
+	if(this.target.focus) {
+		this.target.focus();
+	}
 	
 	// constants
 };
