@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="UTF-8">
+	<title>Ace Galaxy</title>
+	
+	<!-- css -->
+	<link href="normalize.css" rel="stylesheet">
+	<style>
+		html {
+			height: 100%;
+			width: 100%;
+			
+			background: black;
+		}
+		body {
+			position: relative;
+			min-height: 100%;
+			width: 100%;
+			
+			overflow: hidden;
+			padding: 0.1px;
+		}
+		.game {
+			display: block;
+			position: relative;
+			
+			margin-top: 25%;
+			width: 100%;
+		}
+		.game canvas {
+			display: block;
+			margin: 0 auto;
+			
+			border: 2px solid white;
+		}
+	</style>
+	
+	<!-- js -->
+	<script src="js/lib/jquery-3.1.1.min.js"></script>
+	<script src="js/lib/three.min.js"></script>
+	<script src="js/lib/dat.gui.min.js"></script>
+	<script src="js/lib/stats.min.js"></script>
+	
+	<script src="js/keyinput.js"></script>
+	<script src="js/acegalaxy.js"></script>
+</head>
+
+<body>
+	<!-- <header class="gameheader">
+		<h1>Ace Galaxy</h1>
+	</header> -->
+	<section id="game" class="game"></section>
+</body>
+</html>
