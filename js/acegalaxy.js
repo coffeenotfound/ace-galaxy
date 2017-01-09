@@ -58,7 +58,11 @@ var Game = {
 	testgeometry: null,
 	testmaterial: null,
 	testmesh: null,
+	
 	testcamera: null,
+	cameraOrbiter: null,
+	
+	cameraUp: new THREE.Vector3(0.0, 1.0, 0.0),
 	
 	init: function() {
 		// create scene
@@ -68,6 +72,8 @@ var Game = {
 		this.testcamera = new THREE.PerspectiveCamera(75, resolution.x / resolution.y, 0.1, 1000);
 		this.testcamera.position.z = 10;
 		this.currentScene.activeCamera = this.testcamera;
+		
+		this.cameraOrbiter = new CameraOrbiter(this.testcamera),
 		
 		// create mesh
 		this.testgeometry = new THREE.BoxGeometry(10, 10, 10);
@@ -81,12 +87,29 @@ var Game = {
 		// wobble camera
 		this.testcamera.position.z = 15 + Math.sin((performance.now() / 1000.0)*(2*Math.PI))*1;
 		
+		// rotate camera
+		//if(keyinput.isKeyDown(65)) Utils.rotateAroundWorldAxis(this.testcamera, this.cameraUp, 0.01);
+		//if(keyinput.isKeyDown(68)) Utils.rotateAroundWorldAxis(this.testcamera, this.cameraUp, -0.01);
+		
+		//if(keyinput.isKeyDown(87)) this.cameraOrbiter.desiredRotation.rotateY(0.01);
+		//if(keyinput.isKeyDown(83)) this.cameraOrbiter.desiredRotation.rotateY(-0.01);
+		
+		Matrix4 mat = new THREE.Matrix4();
+		mat.makeRotationFromQuaternion();
+		
+		
+		// update camera controller
+		console.log(this.cameraOrbiter);
+		this.cameraOrbiter.update(1.0);
+		
+		/*
 		// rotate cube
 		if(keyinput.isKeyDown(65)) this.testmesh.rotation.y -= 0.01;
 		if(keyinput.isKeyDown(68)) this.testmesh.rotation.y += 0.01;
 		
 		if(keyinput.isKeyDown(87)) this.testmesh.rotation.x += 0.01;
 		if(keyinput.isKeyDown(83)) this.testmesh.rotation.x -= 0.01;
+		*/
 	},
 	
 	draw: function() {
@@ -129,35 +152,35 @@ Scene.prototype = {
 };
 
 // class ArcballCamera
-var ArcballCamera = function(arcDistance) {
-	THREE.Camera.apply(this);
+var CameraOrbiter = function(threeCamera) {
+	this.threeCamera = threeCamera;
+};
+CameraOrbiter.prototype = {
+	smoothingRot: 0.0,
+	smoothingOrbitDist: 0.0,
 	
-	this.arcDistance = arcDistance;
-}
-ArcballCamera.prototype = Object.create(THREE.Camera.prototype);
-ArcballCamera.prototype.constructor = ArcballCamera;
-ArcballCamera.prototype = Object.assign(Object.create(THREE.PerspectiveCamera.prototype), {
-	arcDistance: 1.0,
+	desiredRotation: new THREE.Quaternion(0.0, 0.0, -1.0, 0.0),
+	desiredOrbitDistance: 1.0,
+	currentOrbitDistance: 1.0,
+	threeCamera: null,
 	
-	updateProjectionMatrix: function() {
-		var near = this.near;
-		var top = near * Math.tan(_Math.DEG2RAD * 0.5 * this.fov ) / this.zoom;
-		var height = 2 * top;
-		var width = this.aspect * height;
-		var left = - 0.5 * width;
-		var view = this.view;
+	update: function(deltafactor) {
+		// lerp rotation
+		this.threeCamera.quaternion.slerp(this.desiredRotation, 1.0 - this.smoothingRot);
 		
-		if(view !== null) {
-			var fullWidth = view.fullWidth, fullHeight = view.fullHeight;
-			left += view.offsetX * width / fullWidth;
-			top -= view.offsetY * height / fullHeight;
-			width *= view.width / fullWidth;
-			height *= view.height / fullHeight;
-		}
-		
-		var skew = this.filmOffset;
-		if ( skew !== 0 ) left += near * skew / this.getFilmWidth();
-		
-		this.projectionMatrix.makeFrustum(left, left + width, top - height, top, near, this.far );
+		// lerp orbit dist
+		this.currentOrbitDistance = THREE.Math.lerp(this.desiredOrbitDistance, this.currentOrbitDistance, this.smoothingOrbitDist);
 	},
-});
+};
+
+var Utils = {
+	tempRotateWorldMatrix: new THREE.Matrix4(),
+	rotateAroundWorldAxis: function(object, axis, radians) {
+		rotWorldMatrix = tempRotateWorldMatrix;
+		//rotWorldMatrix.identity();
+		rotWorldMatrix.makeRotationAxis(axis.normalize(), radians);
+		rotWorldMatrix.multiplySelf(object.matrix);        // pre-multiply
+		object.matrix = rotWorldMatrix;
+		object.rotation.getRotationFromMatrix(object.matrix, object.scale);
+	},
+};
