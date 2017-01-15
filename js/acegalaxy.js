@@ -1,186 +1,372 @@
-const resolution = {x: 640, y: 480};
+var gl;
+var keyinput;
 
-var keyinput = new KeyInput({target: window});
-var frameclock = new THREE.Clock(false);
+// https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API
+// https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext
+// https://www.khronos.org/registry/gles/specs/2.0/GLSL_ES_Specification_1.0.17.pdf
 
-var threeRenderer;
-
-// start game
 $(function() {
+	// init
 	init();
-	animate();
+	
+	// main loop
+	requestAnimationFrame(animate);
 });
 
 function init() {
 	// create stats panel
-	this.stats = new Stats();
-	this.stats.showPanel(0);
-	document.body.appendChild(this.stats.dom);
+	this.statsjs = new Stats();
+	this.statsjs.showPanel(0);
+	document.body.appendChild(this.statsjs.dom);
 	
-	// create renderer
-	threeRenderer = new THREE.WebGLRenderer();
-	threeRenderer.setSize(resolution.x, resolution.y);
+	// create keyinput.js
+	keyinput = new KeyInput({target: document.getElementById("game")});
+	//keyinput = new KeyInput({target: document.body});
+	
+	// create webgl context
+	gl = NebGL.createGLForId("game", { width: 640/2, height: 480/2, depth: true, alpha: false });
 	
 	// init game
+	Renderer.init();
 	Game.init();
 	
-	// add to dom
-	var domElement = threeRenderer.domElement;
-	document.getElementById("game").appendChild(domElement);
+	// update canvas class
+	gl.canvas.className += "  game--initialized";
+	gl.canvas.style.width = "640px";
+	gl.canvas.style.height = "480px";
 }
 
 function animate() {
 	// request next frame
 	requestAnimationFrame(animate);
 	
-	// start frameclock
-	if(!frameclock.running) {
-		frameclock.start();
-		frameclock.oldTime = frameclock.startTime;
-	}
+	statsjs.begin();
 	
-	// begin stats
-	stats.begin();
-	
-	keyinput.poll();
-	
+	// do logic
 	Game.logic();
-	Game.draw();
 	
-	// end stats
-	stats.end();
+	// do draw
+	Renderer.draw();
+	
+	statsjs.end();
 }
 
-// class Game
+
 var Game = {
 	currentScene: null,
 	
-	testgeometry: null,
-	testmaterial: null,
-	testmesh: null,
-	
-	testcamera: null,
-	cameraOrbiter: null,
-	
-	cameraUp: new THREE.Vector3(0.0, 1.0, 0.0),
+	testCamera: null,
+	testCameraController: null,
 	
 	init: function() {
-		// create scene
+		// create test scene
 		this.currentScene = new Scene();
 		
-		// create camera
-		this.testcamera = new THREE.PerspectiveCamera(75, resolution.x / resolution.y, 0.1, 1000);
-		this.testcamera.position.z = 10;
-		this.currentScene.activeCamera = this.testcamera;
+		// create test camera
+		var cam = new Camera();
+		cam.pos.setXYZ(0, 0, -5);
+		this.currentScene.setActiveCamera(cam);
+		this.testCamera = cam;
 		
-		this.cameraOrbiter = new CameraOrbiter(this.testcamera),
-		
-		// create mesh
-		this.testgeometry = new THREE.BoxGeometry(10, 10, 10);
-		this.testmaterial = new THREE.MeshBasicMaterial({color: 0xFF0000, wireframe: true});
-		
-		this.testmesh = new THREE.Mesh(this.testgeometry, this.testmaterial);
-		this.currentScene.threeScene.add(this.testmesh);
+		// create camera controller
+		this.testCameraController = new CameraController(cam);
 	},
 	
 	logic: function() {
-		// wobble camera
-		this.testcamera.position.z = 15 + Math.sin((performance.now() / 1000.0)*(2*Math.PI))*1;
+		// DEBUG: move camera
+		var moveVector = new Vec3();
+		if(keyinput.isKeyDown(65)) {
+			moveVector[0] += 0.025;
+		}
+		if(keyinput.isKeyDown(68)) {
+			moveVector[0] -= 0.025;
+		}
+		if(keyinput.isKeyDown(87)) {
+			moveVector[2] += 0.025;
+		}
+		if(keyinput.isKeyDown(83)) {
+			moveVector[2] -= 0.025;
+		}
+		this.testCamera.pos.add(moveVector);
 		
-		// rotate camera
-		//if(keyinput.isKeyDown(65)) Utils.rotateAroundWorldAxis(this.testcamera, this.cameraUp, 0.01);
-		//if(keyinput.isKeyDown(68)) Utils.rotateAroundWorldAxis(this.testcamera, this.cameraUp, -0.01);
+		// DEBUG: rotate camera
+		var tempRotSpeed = weml.toRadians(90/144);
+		if(keyinput.isKeyDown(38)) {
+			this.testCamera.rotation.rotateLocalAxesXYZ(tempRotSpeed, 0, 0);
+		}
+		if(keyinput.isKeyDown(40)) {
+			this.testCamera.rotation.rotateLocalAxesXYZ(-tempRotSpeed, 0, 0);
+		}
+		if(keyinput.isKeyDown(37)) {
+			this.testCamera.rotation.rotateLocalAxesXYZ(0, tempRotSpeed, 0);
+		}
+		if(keyinput.isKeyDown(39)) {
+			this.testCamera.rotation.rotateLocalAxesXYZ(0, -tempRotSpeed, 0);
+		}
+		if(keyinput.isKeyDown(39)) {
+			this.testCamera.rotation.rotateLocalAxesXYZ(0, -tempRotSpeed, 0);
+		}
 		
-		//if(keyinput.isKeyDown(87)) this.cameraOrbiter.desiredRotation.rotateY(0.01);
-		//if(keyinput.isKeyDown(83)) this.cameraOrbiter.desiredRotation.rotateY(-0.01);
+		this.testCamera.rotation.normalize();
 		
-		Matrix4 mat = new THREE.Matrix4();
-		mat.makeRotationFromQuaternion();
+		// update cameracontroller
+		this.testCameraController.update();
 		
-		
-		// update camera controller
-		console.log(this.cameraOrbiter);
-		this.cameraOrbiter.update(1.0);
-		
-		/*
-		// rotate cube
-		if(keyinput.isKeyDown(65)) this.testmesh.rotation.y -= 0.01;
-		if(keyinput.isKeyDown(68)) this.testmesh.rotation.y += 0.01;
-		
-		if(keyinput.isKeyDown(87)) this.testmesh.rotation.x += 0.01;
-		if(keyinput.isKeyDown(83)) this.testmesh.rotation.x -= 0.01;
-		*/
-	},
-	
-	draw: function() {
-		// render the current scene
-		if(this.currentScene != null && this.currentScene.activeCamera != null) {
-			threeRenderer.render(this.currentScene.threeScene, this.currentScene.activeCamera);
+		// DEBUG: update entities
+		if(this.currentScene) {
+			var scene = this.currentScene;
+			
+			for(var i = 0; i < scene.entities.length; i++) {
+				var entity = scene.entities[i];
+				
+				entity.pos.add(entity.veclocity);
+			}
 		}
 	},
 };
 
-// class Entity
-var Entity = function() {};
-Entity.prototype = {
-	pos: THREE.Vector3(),
-	rotation: THREE.Quaternion(),
-	vel: THREE.Vector3(),
-	angularVel: THREE.Quaternion(),
-	
-	addForce: function(x, y, z) {
-		vel.x += x || 0;
-		vel.y += y || 0;
-		vel.z += z || 0;
-	},
-	
-	teleport: function(x, y, z) {
-		pos.x = x || 0;
-		pos.y = y || 0;
-		pos.z = z || 0;
-	}
-};
 
 // class Scene
 var Scene = function() {
-	this.threeScene = new THREE.Scene();
+	
 };
 Scene.prototype = {
-	threeScene: null,
-	entities: [],
 	activeCamera: null,
-};
-
-// class ArcballCamera
-var CameraOrbiter = function(threeCamera) {
-	this.threeCamera = threeCamera;
-};
-CameraOrbiter.prototype = {
-	smoothingRot: 0.0,
-	smoothingOrbitDist: 0.0,
 	
-	desiredRotation: new THREE.Quaternion(0.0, 0.0, -1.0, 0.0),
-	desiredOrbitDistance: 1.0,
-	currentOrbitDistance: 1.0,
-	threeCamera: null,
+	entities: [],
 	
-	update: function(deltafactor) {
-		// lerp rotation
-		this.threeCamera.quaternion.slerp(this.desiredRotation, 1.0 - this.smoothingRot);
+	spawnEntity: function(entity) {
+		this.entities.push(entity);
+	},
+	removeEntity: function(entity) {
+		var index = this.entities.indexOf(entity);
+		if(index > -1) {
+			this.entities.splice(index, 1);
+		}
 		
-		// lerp orbit dist
-		this.currentOrbitDistance = THREE.Math.lerp(this.desiredOrbitDistance, this.currentOrbitDistance, this.smoothingOrbitDist);
+		/*
+		// remove by moving the last entity in the list at the new free index
+		var lastEntity;
+		for(var i = entities.length - 1; i >= 0; i--) {
+			if(entities[i] == entity) {
+				// if entity is last in list, set to null and return
+				if(!lastEntity) {
+					entities[i] = null;
+					break;
+				}
+				// found entity and its not last in list -> move last entity to its index and return
+				else {
+					entities[i] = lastEntity;
+					break;
+				}
+			}
+			else {
+				// found last entity
+				if(!lastEntity && entities[i]) {
+					lastEntity = entities[i];
+				}
+			}
+		}
+		*/
+	},
+	
+	setActiveCamera: function(camera) {
+		this.activeCamera = camera;
 	},
 };
 
-var Utils = {
-	tempRotateWorldMatrix: new THREE.Matrix4(),
-	rotateAroundWorldAxis: function(object, axis, radians) {
-		rotWorldMatrix = tempRotateWorldMatrix;
-		//rotWorldMatrix.identity();
-		rotWorldMatrix.makeRotationAxis(axis.normalize(), radians);
-		rotWorldMatrix.multiplySelf(object.matrix);        // pre-multiply
-		object.matrix = rotWorldMatrix;
-		object.rotation.getRotationFromMatrix(object.matrix, object.scale);
+
+// class Entity
+var Entity = function() {
+	this.pos = new Vec3();
+	this.scale = new Vec3();
+	this.rotation = new Quat();
+	this.velocity = new Vec3();
+};
+Entity.prototype = {
+	pos: null,
+	scale: null,
+	rotation: null,
+	
+	velocity: null,
+};
+
+
+// class Camera
+var Camera = function() {
+	Entity.call(this);
+	
+	console.log(this.pos);
+};
+Camera.prototype = Object.assign(Object.create(Entity.prototype), {
+	calcViewMatrix: function(mat) {
+		//console.log(this.pos);
+		mat.identity().translate(this.pos).applyRotationQuat(this.rotation);
+		//mat.identity().translateXYZ(0, 0, -5);
+	},
+	calcProjectionMatrix: function(mat) {
+		mat.identity().perspective(75 * (Math.PI/180)*(480/640), (640/480), 0.1, 1000.0);
+	},
+});
+Camera.prototype.constructor = Camera;
+
+
+// class CameraController
+var CameraController = function(camera) {
+	this.camera = camera;
+};
+CameraController.prototype = {
+	camera: null,
+	
+	baseRotation: new Quat(),
+	rotationOffsetEuler: new Vec3(),
+	
+	update: function() {
+		if(this.camera) {
+			var cam = this.camera;
+			
+			// update rotation
+			//cam.rotation.set();
+		}
+	},
+	follow(baserot) {
+		this.baseRotation.set(baserot);
+	},
+	rotateOffset: function(x, y) {
+		this.rotationOffsetEuler.addXYZ(x, y, 0);
+	},
+};
+
+
+// class Renderer
+var Renderer = {
+	shaderScene: null,
+	shaderUI: null,
+	
+	testcubevertexbuffer: null,
+	testcubeelementbuffer: null,
+	
+	starPosBuffer: null,
+	
+	matCameraV: new Mat4(),
+	matCameraP: new Mat4(),
+	matTempModel: new Mat4(),
+	matMVP: new Mat4(),
+	matITVP: new Mat4(),
+	
+	testcubevertices: [
+		-1,-1,-1, 1,-1,-1, 1, 1,-1, -1, 1,-1,
+		-1,-1, 1, 1,-1, 1, 1, 1, 1, -1, 1, 1,
+		-1,-1,-1, -1, 1,-1, -1, 1, 1, -1,-1, 1,
+		1,-1,-1, 1, 1,-1, 1, 1, 1, 1,-1, 1,
+		-1,-1,-1, -1,-1, 1, 1,-1, 1, 1,-1,-1,
+		-1, 1,-1, -1, 1, 1, 1, 1, 1, 1, 1,-1,
+	],
+	testcubeindices: [
+		0,1,2, 0,2,3, 4,5,6, 4,6,7,
+		8,9,10, 8,10,11, 12,13,14, 12,14,15,
+		16,17,18, 16,18,19, 20,21,22, 20,22,23,
+	],
+	
+	init: function() {
+		// load shader
+		this.shaderScene = NebGL.createProgramFromScripts(gl, "scene-vert", "scene-frag");
+		this.shaderScene.uMatMVP = gl.getUniformLocation(this.shaderScene, "uMatMVP");
+		//this.shaderScene.uMatITVP = gl.getUniformLocation(this.shaderScene, "uMatITVP");
+		
+		// create cube buffer
+		this.testcubevertexbuffer = NebGL.createBuffer(gl);
+		NebGL.uploadBuffer(gl, this.testcubevertexbuffer, gl.ARRAY_BUFFER, new Float32Array(this.testcubevertices), gl.STATIC_DRAW);
+		
+		this.testcubeelementbuffer = NebGL.createBuffer(gl);
+		NebGL.uploadBuffer(gl, this.testcubeelementbuffer, gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(this.testcubeindices), gl.STATIC_DRAW);
+		
+		// generate random stars and upload to buffer
+		var starPosArray = new Float32Array(64 * 3);
+		var tempStarPos = new Vec3();
+		for(var i = 0; i < 64; i++) {
+			weml.randVec3(-1, 1, tempStarPos).normalize().put(starPosArray, i*3);
+		}
+		
+		this.starPosBuffer = NebGL.createBuffer(gl);
+		NebGL.uploadBuffer(gl, this.starPosBuffer, gl.ARRAY_BUFFER, new Float32Array(starPosArray), gl.STATIC_DRAW);
+		
+		// create cube vao
+		//this.testcubevao = NebGL.createVertexArray(gl, [{ buffer: this.testcubevertexbuffer }]);
+	},
+	
+	draw: function() {
+		// setup state
+		gl.enable(gl.DEPTH_TEST);
+		
+		// clear
+		gl.clearColor(0,0,0,1);
+		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+		
+		// bind shader
+		gl.useProgram(this.shaderScene);
+		
+		// draw scene
+		if(Game.currentScene && Game.currentScene.activeCamera) {
+			this.drawScene(Game.currentScene);
+		}
+	},
+	
+	drawScene: function(scene) {
+		var cam = scene.activeCamera;
+		
+		// update camera matrices
+		cam.calcViewMatrix(this.matCameraV);
+		cam.calcProjectionMatrix(this.matCameraP);
+		
+		// draw testcube
+		this.matTempModel.identity();
+		this.setModelMatrix(this.matTempModel);
+		
+		gl.bindBuffer(gl.ARRAY_BUFFER, this.testcubevertexbuffer);
+		gl.enableVertexAttribArray(0);
+		gl.vertexAttribPointer(0, 3, gl.FLOAT, 0, 0, 0);
+		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.testcubeelementbuffer);
+		
+		gl.drawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0);
+		
+		// draw skybox
+		this.drawBackground();
+	},
+	
+	drawBackground: function() {
+		// draw skybox stars
+		// calc itvp matrix
+		//this.matCameraP.mul(this.matCameraV.invert(this.matITVP).transpose(), this.matITVP);
+		
+		this.matITVP.set(this.matMVP);
+		
+		//this.matCameraV.invert(this.matITVP).transpose().invert();
+		//this.matCameraV.transpose(this.matITVP);
+		//this.matCameraV.invert(this.matITVP).transpose().mul(this.matCameraP);
+		this.matITVP[12] = 0;
+		this.matITVP[13] = 0;
+		this.matITVP[14] = 0;
+		this.matITVP[03] = 0;
+		this.matITVP[07] = 0;
+		this.matITVP[11] = 0;
+		this.matITVP[15] = 1.0;
+		
+		gl.uniformMatrix4fv(this.shaderScene.uMatMVP, false, this.matITVP);
+		
+		// draw
+		gl.bindBuffer(gl.ARRAY_BUFFER, this.starPosBuffer);
+		gl.enableVertexAttribArray(0);
+		gl.vertexAttribPointer(0, 3, gl.FLOAT, 0, 0, 0);
+		
+		gl.drawArrays(gl.POINTS, 0, this.starPosBuffer.info.length / 3);
+	},
+	
+	setModelMatrix: function(modelmat) {
+		// recalc mvp matrix
+		this.matCameraP.mul(this.matCameraV, this.matMVP).mul(modelmat);
+		
+		// update uniform
+		gl.uniformMatrix4fv(this.shaderScene.uMatMVP, false, this.matMVP);
 	},
 };
