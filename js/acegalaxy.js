@@ -1,9 +1,17 @@
 var gl;
+var gli;
 var keyinput;
 
 // https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API
 // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext
 // https://www.khronos.org/registry/gles/specs/2.0/GLSL_ES_Specification_1.0.17.pdf
+
+// DEBUG: INDEXEDDB TEST
+var dbopenreq = indexedDB.open("__RESOURCE");
+dbopenreq.onsuccess = function(e){ console.log("open success: " + e); };
+dbopenreq.onerror = function(e){ console.log("open error: " + e); };
+dbopenreq.onblocked = function(e){ console.log("open blocked: " + e); };
+console.log(dbopenreq);
 
 $(function() {
 	// init
@@ -24,7 +32,11 @@ function init() {
 	//keyinput = new KeyInput({target: document.body});
 	
 	// create webgl context
-	gl = NebGL.createGLForId("game", { width: 640/2, height: 480/2, depth: true, alpha: false });
+	gl = NebGL.createGLForId("game", { width: Game.resolution.x/2, height: Game.resolution.y/2, depth: true, alpha: false });
+	NebGL.createExtension(gl, "ANGLE_instanced_arrays");
+	
+	// create webgldynamicdraw
+	gli = WebGLDynamicDraw.createContext(gl);
 	
 	// init game
 	Renderer.init();
@@ -32,8 +44,8 @@ function init() {
 	
 	// update canvas class
 	gl.canvas.className += "  game--initialized";
-	gl.canvas.style.width = "640px";
-	gl.canvas.style.height = "480px";
+	gl.canvas.style.width = Game.resolution.x + "px";
+	gl.canvas.style.height = Game.resolution.y + "px";
 }
 
 function animate() {
@@ -53,75 +65,190 @@ function animate() {
 
 
 var Game = {
+	resolution: {
+		x: 1024.0,
+		y: 720.0,
+		
+		aspect: function() {
+			return this.x / this.y;
+		},
+		invaspect: function() {
+			return 1.0 / this.aspect();
+		},
+	},
+	
 	currentScene: null,
 	
-	testCamera: null,
-	testCameraController: null,
+	playerController: null,
 	
 	init: function() {
 		// create test scene
 		this.currentScene = new Scene();
 		
-		// create test camera
-		var cam = new Camera();
-		cam.pos.setXYZ(0, 0, -5);
-		this.currentScene.setActiveCamera(cam);
-		this.testCamera = cam;
+		// create playerController
+		this.playerController = new PlayerController();
 		
-		// create camera controller
-		this.testCameraController = new CameraController(cam);
+		// create main camera
+		var cam = new Camera();
+		this.currentScene.spawnEntity(cam);
+		cam.orbitDistance = 10.0;
+		this.currentScene.setActiveCamera(cam);
+		this.playerController.setPlayerCamera(cam);
+		
+		// spawn player ship
+		var playerShip = new ShipEntity();
+		this.currentScene.spawnEntity(playerShip);
+		this.playerController.setPlayerShip(playerShip);
+		
+		// spawn random entities
+		for(var i = 0; i < 64; i++) {
+			var ent = new Entity();
+			
+			// random pos
+			weml.randVec3(-100, 100, ent.pos);
+			ent.pos.mulXYZ(1, 0.5, 1);
+			weml.randQuat(ent.rotation);
+			//weml.randVec3(-0.001, 0.001, ent.velocity);
+			//weml.randQuat(ent.angularVel);
+			
+			// spawn
+			this.currentScene.spawnEntity(ent);
+		}
 	},
 	
 	logic: function() {
-		// DEBUG: move camera
-		var moveVector = new Vec3();
-		if(keyinput.isKeyDown(65)) {
-			moveVector[0] += 0.025;
-		}
-		if(keyinput.isKeyDown(68)) {
-			moveVector[0] -= 0.025;
-		}
-		if(keyinput.isKeyDown(87)) {
-			moveVector[2] += 0.025;
-		}
-		if(keyinput.isKeyDown(83)) {
-			moveVector[2] -= 0.025;
-		}
-		this.testCamera.pos.add(moveVector);
+		// update playercontroller
+		this.playerController.logic();
 		
-		// DEBUG: rotate camera
-		var tempRotSpeed = weml.toRadians(90/144);
-		if(keyinput.isKeyDown(38)) {
-			this.testCamera.rotation.rotateLocalAxesXYZ(tempRotSpeed, 0, 0);
-		}
-		if(keyinput.isKeyDown(40)) {
-			this.testCamera.rotation.rotateLocalAxesXYZ(-tempRotSpeed, 0, 0);
-		}
-		if(keyinput.isKeyDown(37)) {
-			this.testCamera.rotation.rotateLocalAxesXYZ(0, tempRotSpeed, 0);
-		}
-		if(keyinput.isKeyDown(39)) {
-			this.testCamera.rotation.rotateLocalAxesXYZ(0, -tempRotSpeed, 0);
-		}
-		if(keyinput.isKeyDown(39)) {
-			this.testCamera.rotation.rotateLocalAxesXYZ(0, -tempRotSpeed, 0);
-		}
-		
-		this.testCamera.rotation.normalize();
-		
-		// update cameracontroller
-		this.testCameraController.update();
-		
-		// DEBUG: update entities
+		// update entities
 		if(this.currentScene) {
 			var scene = this.currentScene;
 			
 			for(var i = 0; i < scene.entities.length; i++) {
 				var entity = scene.entities[i];
 				
-				entity.pos.add(entity.veclocity);
+				entity.pos.add(entity.velocity);
+				entity.rotation.mul(entity.angularVel);
 			}
 		}
+	},
+};
+
+
+// class PlayerController
+var PlayerController = function() {
+	this.camController = new CameraController();
+};
+PlayerController.prototype = {
+	_playerShip: null,
+	_playerCamera: null,
+	
+	camController: null,
+	
+	tempVec: new Vec3(),
+	tempQuat: new Quat(),
+	
+	logic: function() {
+		var playerShip = this._playerShip;
+		
+		{// rotate ship
+			var tempRotSpeed = weml.toRadians(180/144);
+			
+			// get old rotation
+			var oldRot = playerShip.rotation.clone();
+			
+			var rotQuat = this.tempQuat.identity();
+			var rotated = false;
+			
+			if(keyinput.isKeyDown(38)) {
+				rotQuat.rotateXYZ(-tempRotSpeed, 0, 0);
+				rotated = true;
+			}
+			if(keyinput.isKeyDown(40)) {
+				rotQuat.rotateXYZ(tempRotSpeed, 0, 0);
+				rotated = true;
+			}
+			if(keyinput.isKeyDown(37)) {
+				rotQuat.rotateXYZ(0, tempRotSpeed, 0);
+				rotated = true;
+			}
+			if(keyinput.isKeyDown(39)) {
+				rotQuat.rotateXYZ(0, -tempRotSpeed, 0);
+				rotated = true;
+			}
+			
+			if(keyinput.isKeyDown(81)) {
+				rotQuat.rotateXYZ(0, 0, tempRotSpeed);
+				rotated = true;
+			}
+			if(keyinput.isKeyDown(69)) {
+				rotQuat.rotateXYZ(0, 0, -tempRotSpeed);
+				rotated = true;
+			}
+			
+			if(rotated) {
+				// apply rotation
+				playerShip.rotation.mul(rotQuat).normalize();
+				
+				// rotate momentum
+				var stickyThrusterMomentumFactor = 0.0;
+				
+				rotQuat.slerp(new Quat(), 1.0 - stickyThrusterMomentumFactor).transformVec3(playerShip.velocity);
+				//rotQuat.transformVec3(playerShip.velocity);
+			}
+		}
+		
+		// dampen momentum
+		playerShip.velocity.mulScalar(0.995);
+		
+		{// move ship
+			var maxVel = 1.0;
+			
+			var moveVector = this.tempVec.identity();
+			if(keyinput.isKeyDown(65)) {
+				moveVector[0] -= 1;
+			}
+			if(keyinput.isKeyDown(68)) {
+				moveVector[0] += 1;
+			}
+			if(keyinput.isKeyDown(87)) {
+				moveVector[2] -= 1;
+			}
+			if(keyinput.isKeyDown(83)) {
+				moveVector[2] += 1;
+			}
+			
+			if(moveVector.magnitudesq() > 0) {
+				// rotate towards forward vec
+				playerShip.rotation.transformVec3(moveVector.normalize()).mulScalar(0.003);
+				
+				// add and clamp
+				playerShip.velocity.add(moveVector);
+				if(playerShip.velocity.magnitude() > maxVel) {
+					playerShip.velocity.normalize().mulScalar(maxVel);
+				}
+			}
+		}
+		
+		// update cameracontroller
+		this.camController.follow(this._playerShip.rotation, this._playerShip.pos);
+		this.camController.update();
+	},
+	
+	setPlayerShip: function(ship) {
+		this._playerShip = ship;
+	},
+	setPlayerCamera: function(cam) {
+		this._playerCamera = cam;
+		
+		// update camera controller
+		this.camController.setCamera(this._playerCamera);
+	},
+	getPlayerShip: function() {
+		return this._playerShip;
+	},
+	getPlayerCamera: function() {
+		return this._playerCamera;
 	},
 };
 
@@ -179,9 +306,11 @@ Scene.prototype = {
 // class Entity
 var Entity = function() {
 	this.pos = new Vec3();
-	this.scale = new Vec3();
+	this.scale = new Vec3(1, 1, 1);
 	this.rotation = new Quat();
+	
 	this.velocity = new Vec3();
+	this.angularVel = new Quat();
 };
 Entity.prototype = {
 	pos: null,
@@ -189,23 +318,32 @@ Entity.prototype = {
 	rotation: null,
 	
 	velocity: null,
+	angularVel: null,
 };
+
+
+// class ShipEntity
+var ShipEntity = function() {
+	Entity.call(this);
+};
+ShipEntity.prototype = Object.assign(Object.create(Entity.prototype), {
+	thrusters: [],
+});
+ShipEntity.prototype.constructor = ShipEntity;
 
 
 // class Camera
 var Camera = function() {
 	Entity.call(this);
-	
-	console.log(this.pos);
 };
 Camera.prototype = Object.assign(Object.create(Entity.prototype), {
+	orbitDistance: 0.0,
+	
 	calcViewMatrix: function(mat) {
-		//console.log(this.pos);
-		mat.identity().translate(this.pos).applyRotationQuat(this.rotation);
-		//mat.identity().translateXYZ(0, 0, -5);
+		mat.identity().translateXYZ(0, 0, -this.orbitDistance).applyRotationQuat(this.rotation.invert(new Quat()).normalize()).translateXYZ(-this.pos[0], -this.pos[1], -this.pos[2]);
 	},
 	calcProjectionMatrix: function(mat) {
-		mat.identity().perspective(75 * (Math.PI/180)*(480/640), (640/480), 0.1, 1000.0);
+		mat.identity().perspective(75 * (Math.PI/180)*Game.resolution.invaspect(), Game.resolution.aspect(), 0.1, 1000.0);
 	},
 });
 Camera.prototype.constructor = Camera;
@@ -216,24 +354,35 @@ var CameraController = function(camera) {
 	this.camera = camera;
 };
 CameraController.prototype = {
-	camera: null,
+	_camera: null,
 	
-	baseRotation: new Quat(),
-	rotationOffsetEuler: new Vec3(),
+	_baseRot: new Quat(),
+	_basePos: new Vec3(),
+	_rotationOffset: new Vec3(),
 	
 	update: function() {
-		if(this.camera) {
-			var cam = this.camera;
+		if(this._camera) {
+			var cam = this._camera;
 			
-			// update rotation
-			//cam.rotation.set();
+			// update cam
+			cam.rotation.slerp(this._baseRot, 0.05);
+			cam.pos.set(this._basePos);
 		}
 	},
-	follow(baserot) {
-		this.baseRotation.set(baserot);
+	follow(baserot, basepos) {
+		this._baseRot.set(baserot);
+		this._basePos.set(basepos);
 	},
-	rotateOffset: function(x, y) {
-		this.rotationOffsetEuler.addXYZ(x, y, 0);
+	rotateOffset: function(xrad, yrad) {
+		this._rotationOffset[0] = weml.radmod(this._rotationOffset[0] + xrad);
+		this._rotationOffset[1] = weml.radmod(this._rotationOffset[1] + yrad);
+	},
+	
+	setCamera: function(cam) {
+		this._camera = cam;
+	},
+	getCamera: function() {
+		return this._camera;
 	},
 };
 
@@ -319,10 +468,46 @@ var Renderer = {
 		cam.calcViewMatrix(this.matCameraV);
 		cam.calcProjectionMatrix(this.matCameraP);
 		
-		// draw testcube
-		this.matTempModel.identity();
+		// DEBUG: draw dynamic line
+		this.setModelMatrix(this.matTempModel.identity());
+		
+		gl.lineWidth(8);
+		gli.enableVertexAttrib(0, true);
+		gli.vertexAttrib(0, 3, gl.FLOAT, false);
+		
+		//var camDir = cam.rotation.invert(new Quat()).transformVec3(new Vec3(0, 0, -1)).mulScalar(8.0);
+		var camDir = cam.rotation.transformVec3(new Vec3(0, 0, -1)).mulScalar(8.0);
+		gli.begin(gl.LINES);
+			gli.addVertex3(0, 0, 0, 0);
+			gli.addVertex3(0, camDir[0], camDir[1], camDir[2]);
+			/*
+			gli.addVertex3(0, 0, 0, 0);
+			gli.addVertex3(0, 2, 0, 0);
+			gli.addVertex3(0, 0, 0, 0);
+			gli.addVertex3(0, 0, 2, 0);
+			gli.addVertex3(0, 0, 0, 0);
+			gli.addVertex3(0, 0, 0, 2);
+			*/
+		gli.end();
+		
+		// draw entities
+		for(var i = 0; i < scene.entities.length; i++) {
+			var ent = scene.entities[i];
+			if(ent && !(ent instanceof Camera)) {
+				this.drawEntity(ent);
+			}
+		}
+		
+		// draw skybox
+		this.drawBackground();
+	},
+	
+	drawEntity: function(ent) {
+		// update model matrix
+		this.calcEntityModelMatrix(ent, this.matTempModel);
 		this.setModelMatrix(this.matTempModel);
 		
+		// draw testcube
 		gl.bindBuffer(gl.ARRAY_BUFFER, this.testcubevertexbuffer);
 		gl.enableVertexAttribArray(0);
 		gl.vertexAttribPointer(0, 3, gl.FLOAT, 0, 0, 0);
@@ -330,8 +515,11 @@ var Renderer = {
 		
 		gl.drawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0);
 		
-		// draw skybox
-		this.drawBackground();
+		// DEBUG: draw dir
+		gli.begin(gl.LINES);
+			gli.addVertex3(0, 0, 0, 0);
+			gli.addVertex3(0, 0, 0, -2);
+		gli.end();
 	},
 	
 	drawBackground: function() {
@@ -368,5 +556,9 @@ var Renderer = {
 		
 		// update uniform
 		gl.uniformMatrix4fv(this.shaderScene.uMatMVP, false, this.matMVP);
+	},
+	
+	calcEntityModelMatrix: function(ent, mat) {
+		mat.identity().translateVec3(ent.pos).applyRotationQuat(ent.rotation);
 	},
 };

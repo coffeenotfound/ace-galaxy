@@ -97,10 +97,12 @@
 	<script src="js/lib/jquery-3.1.1.min.js"></script>
 	<script src="js/lib/dat.gui.min.js"></script>
 	<script src="js/lib/stats.min.js"></script>
+	<script src="js/lib/webgl-obj-loader.js"></script>
 	
 	<script src="../keyinput.js/keyinput.js"></script>
 	<script src="../nebgl.js/nebgl.js"></script>
 	<script src="../weml.js/weml.js"></script>
+	<script src="../webgl-dynamicdraw/webgl-dynamicdraw.js"></script>
 	<script src="js/acegalaxy.js"></script>
 	
 	<!-- shaders -->
@@ -129,7 +131,6 @@
 	<header class="header">
 		<h1>[ Ace Galaxy ]</h1>
 	</header>
-	
 	<section class="gamesection">
 		<canvas class="game" id="game" tabindex="0">
 			<p class="canvas-unsupported">Your browser doesn't seem to support the <code >&lt;canvas&gt;</code> element</p>
@@ -138,6 +139,12 @@
 	
 	<footer class="footer">
 		<a href="https://github.com/coffeenotfound/ace-galaxy">[ source ]</a>
+		<a href="javascript:NebGL.makeFullscreen(gl)">Fullscreen</a>
 	</footer>
+	
+	<!-- TEST -->
+	<div id="__RESOURCES" style="display: none;">
+		<img src="res/teapot.obj"></img>
+	</div>
 </body>
 </html>
